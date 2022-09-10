@@ -18,9 +18,11 @@ import (
 	"gopkg.in/cenkalti/backoff.v1"
 )
 
-var urlPath string
-var srv *Server
-var server *httptest.Server
+var (
+	urlPath string
+	srv     *Server
+	server  *httptest.Server
+)
 
 var mldata = `{
 	"key": "value",
@@ -192,6 +194,24 @@ func TestClientChanSubscribe(t *testing.T) {
 	c.Unsubscribe(events)
 }
 
+func TestClientOnConnect(t *testing.T) {
+	setup(false)
+	defer cleanup()
+
+	c := NewClient(urlPath)
+
+	called := make(chan struct{})
+	c.OnConnect(func(client *Client) {
+		called <- struct{}{}
+	})
+
+	go c.Subscribe("test", func(msg *Event) {})
+
+	time.Sleep(time.Second)
+
+	assert.Equal(t, struct{}{}, <-called)
+}
+
 func TestClientOnDisconnect(t *testing.T) {
 	setup(false)
 	defer cleanup()
@@ -270,7 +290,7 @@ func TestClientUnsubscribeNonBlock(t *testing.T) {
 		assert.Nil(t, merr)
 		assert.Equal(t, []byte(`ping`), msg)
 	}
-	//No more data is available to be read in the channel
+	// No more data is available to be read in the channel
 	// Make sure Unsubscribe returns quickly
 	doneCh := make(chan *Event)
 	go func() {

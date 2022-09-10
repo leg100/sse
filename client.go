@@ -41,6 +41,7 @@ type ResponseValidator func(c *Client, resp *http.Response) error
 type Client struct {
 	Retry             time.Time
 	ReconnectStrategy backoff.BackOff
+	connectcb      ConnCallback
 	disconnectcb      ConnCallback
 	subscribed        map[chan *Event]chan struct{}
 	Headers           map[string]string
@@ -93,6 +94,11 @@ func (c *Client) SubscribeWithContext(ctx context.Context, stream string, handle
 			return fmt.Errorf("could not connect to stream: %s", http.StatusText(resp.StatusCode))
 		}
 		defer resp.Body.Close()
+
+		// run user specified connect function
+		if c.connectcb != nil {
+			c.connectcb(c)
+		}
 
 		reader := NewEventStreamReader(resp.Body, c.maxBufferSize)
 		eventChan, errorChan := c.startReadLoop(reader)
@@ -152,6 +158,11 @@ func (c *Client) SubscribeChanWithContext(ctx context.Context, stream string, ch
 			// Notify connect
 			errch <- nil
 			connected = true
+		}
+
+		// run user specified connect function
+		if c.connectcb != nil {
+			c.connectcb(c)
 		}
 
 		reader := NewEventStreamReader(resp.Body, c.maxBufferSize)
@@ -268,6 +279,11 @@ func (c *Client) Unsubscribe(ch chan *Event) {
 	if c.subscribed[ch] != nil {
 		c.subscribed[ch] <- struct{}{}
 	}
+}
+
+// OnConnect specifies the function to run when the connection connects
+func (c *Client) OnConnect(fn ConnCallback) {
+	c.connectcb = fn
 }
 
 // OnDisconnect specifies the function to run when the connection disconnects
